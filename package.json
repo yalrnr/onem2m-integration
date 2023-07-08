@@ -1,0 +1,19 @@
+{
+  "name": "onem2m-api-integration",
+  "version": "1.0.0",
+  "description": "Platform for onem2m services",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Anuj",
+  "license": "MIT",
+  "dependencies": {
+    "config": "^3.3.9",
+    "express": "^4.18.2",
+    "find-free-port": "^2.0.0",
+    "hashmap": "^2.4.0",
+    "nodemon": "^2.0.22",
+    "request": "^2.88.2"
+  }
+}
