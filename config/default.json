@@ -1,0 +1,14 @@
+{
+    "cse": {
+        "ip": "127.0.0.1",
+        "port": 7579,
+        "id": "Mobius2",
+        "name": "Mobius",
+        "release": "1",
+        "acp_required": true
+    },
+    "app": {
+        "ip": "127.0.0.1",
+        "port": 8369
+    }
+}
