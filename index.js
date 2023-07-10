@@ -27,7 +27,7 @@ app.post('/devices/:name', function (req, res) {
 	let name = req.params.name;
 
 	createAE(name);
-	res.sendStatus(201).json("AE device created");
+	res.status(201).json("AE device created");
 })
   
 app.listen(config.app.port, function () {
@@ -75,3 +75,75 @@ function createAE(name){
 	});
 }
 
+function createContainer(name, containerName) {
+	console.log("\n[REQUEST]");
+  
+	var options = {
+	  uri: csePoA + "/" + config.cse.name + "/" + name,
+	  method: "POST",
+	  headers: {
+		"X-M2M-Origin": "Cae-" + name,
+		"X-M2M-RI": "req" + requestNr,
+		"Content-Type": "application/vnd.onem2m-res+json;ty=3"
+	  },
+	  json: {
+		"m2m:cnt": {
+		  "rn": containerName
+		}
+	  }
+	};
+  
+	console.log("");
+	console.log(options.method + " " + options.uri);
+	console.log(options.json);
+  
+	if (cseRelease != "1") {
+	  options.headers = Object.assign(options.headers, { "X-M2M-RVI": cseRelease });
+	  options.json["m2m:cnt"] = Object.assign(options.json["m2m:cnt"], { "srv": ["2a"] });
+	}
+  
+	requestNr += 1;
+	request(options, function (err, resp, body) {
+	  console.log("[RESPONSE]");
+	  if (err) {
+		console.log("Container Creation error : " + err);
+	  }
+	});
+  }
+
+  function createContentInstance(name, containerName, content) {
+	console.log("\n[REQUEST]");
+  
+	var options = {
+	  uri: csePoA + "/" + config.cse.name + "/" + name + "/" + containerName,
+	  method: "POST",
+	  headers: {
+		"X-M2M-Origin": "Cae-" + name,
+		"X-M2M-RI": "req" + requestNr,
+		"Content-Type": "application/vnd.onem2m-res+json;ty=4"
+	  },
+	  json: {
+		"m2m:cin": {
+		  "con": content
+		}
+	  }
+	};
+  
+	console.log("");
+	console.log(options.method + " " + options.uri);
+	console.log(options.json);
+  
+	if (cseRelease != "1") {
+	  options.headers = Object.assign(options.headers, { "X-M2M-RVI": cseRelease });
+	  options.json["m2m:cin"] = Object.assign(options.json["m2m:cin"], { "srv": ["2a"] });
+	}
+  
+	requestNr += 1;
+	request(options, function (err, resp, body) {
+	  console.log("[RESPONSE]");
+	  if (err) {
+		console.log("Content Instance Creation error : " + err);
+	  }
+	});
+  }
+  
