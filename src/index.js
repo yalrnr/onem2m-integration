@@ -1,65 +1,146 @@
 var express = require('express');
 var request = require('request');
-var hashmap = require('hashmap');
 var config = require('config');
-var path = require('path');
 var bodyParser = require('body-parser');
-const readline = require('readline');
-const { Console } = require('console');
+const mongoose = require('mongoose')
+const DataModel = require('./dbModel/dataModel');
+require('dotenv').config()
 
 var app = express();
-var map = new hashmap();
 
 app.use(bodyParser.json({type : ['application/*+json','application/json']}));
 
+var cseURL = "http://"+config.cse.ip+":"+config.cse.port;
 var csePoA = "http://"+config.cse.ip+":"+config.cse.port;
 var cseRelease = config.cse.release;
-var deviceTypes = new hashmap();
-var templates = config.templates;
-var acpi = {};
 var requestNr = 0;
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});							
 
-// creating an AE on mobius and saving it's data on server
-// delete an AE
-// update an AE
 
-app.post('/devices/', function (req, res) {
-	let reqBody = req.body;
-	let device_id = reqBody.id;
-	console.log(device_id)
-	let values = reqBody.values
-	values.forEach(element => {
-		console.log(element.device_type);
-		console.log(element.sensor_value);
-		console.log(element.unit);
-	});
-	createAE(reqBody);
-	res.status(201).json("AE device created");
+// MongoDB Connection for Validation
+mongoose.connect(process.env.DB).then(() => {
+    console.log("DB connected successfully");
+}).catch((err) => {
+    console.log("DB error", err);
 })
-  
+
+
+// created APIs
+// creating an AE on mobius and saving it's data on mongoDB
+app.post('/devices/', async function (req, res) {
+	let reqBody = req.body;
+	let name = reqBody.device_id;
+	try {
+		const devices = await DataModel.find({
+			device_id : name
+		})
+		if(devices.length === 0) {
+			const result = await DataModel.create(reqBody)
+			createAE(reqBody);
+			return res.status(201).json({
+				message : "AE device created!",
+				data : result
+			})
+		}
+		else {
+			return res.status(200).json({
+				message : "Device already exists, AE can't be created!"
+			})
+		}
+	} catch (error) {
+		return res.status(500).json({
+			message : error.message
+		})
+	}
+})
+
+
+// delete an AE device on mobius and it's data from mongoDB
+app.delete('/devices/', async function(req,res) {
+	const reqBody = req.body;
+	const name = reqBody.device_id;
+	try {
+		const devices = await DataModel.find({
+			device_id : name
+		})
+		if(devices.length !== 0) {
+			const result = await DataModel.deleteOne({
+				device_id : name
+			})
+			deleteAE(name);
+			return res.status(200).json({
+				message : "AE device deleted!",
+				data : result
+			})
+		}
+		else {
+			return res.status(200).json({
+				message : "Device doesn't exist, AE can't be deleted!"
+			})
+		}
+	} catch (error) {
+		return res.status(500).json({
+			message : error.message
+		})
+	}
+})
+
+
+// update an AE on mobius and it's data on mongoDB
+app.put('/devices/', async function (req, res) {
+	const reqBody = req.body;
+	const name = reqBody.device_id;
+	try {
+		const devices = await DataModel.find({
+			device_id : name
+		})
+		if(devices.length !== 0) {
+			const deletedResult = await DataModel.deleteOne({
+				device_id : name
+			})
+			deleteAE(name);
+			const result = await DataModel.create(reqBody)
+			createAE(reqBody);
+			return res.status(201).json({
+				message : "AE device updated!",
+				data : result
+			})
+		}
+		else {
+			return res.status(200).json({
+				message : "Device doesn't exist, AE can't be updated!"
+			})
+		}
+	} catch (error) {
+		return res.status(500).json({
+			message : error.message
+		})
+	}
+})
+
+
+
 app.listen(config.app.port, function () {
 	console.log('Simulator API listening on port ' + config.app.port)
 })
 
+
+
+// Mobius Functions for device management
 function createAE(reqBody) {
-	let device_id = reqBody.device_id
+	let aeName = reqBody.device_id
 	console.log("\n[REQUEST]");
 	
 		var options = {
 		uri: csePoA + "/" + config.cse.name,
 		method: "POST",
 		headers: {
-			"X-M2M-Origin": "Cae-"+device_id,
+			"X-M2M-Origin": "Cae-"+aeName,
 			"X-M2M-RI": "req"+requestNr,
 			"Content-Type": "application/vnd.onem2m-res+json;ty=2"
 		},
 		json: { 
 			"m2m:ae":{
-				"rn":device_id,			
+				"rn":aeName,			
 				"api":"Napp.company.com",
 				"rr":false
 			}
@@ -87,21 +168,51 @@ function createAE(reqBody) {
 		else {
 			let values = reqBody.values
 			values.forEach(element => {
-				createContainer(device_id,element)
+				createContainer(aeName,element)
 			});
 		}
 	});
 }
 
-function createContainer(name, values) {
-	let containerName = values.device_type
+
+function deleteAE(aeName){
+	console.log("\n[REQUEST]");
+
+	var options = {
+		uri: cseURL + "/" + config.cse.name + "/" + aeName,
+		method: "DELETE",
+		headers: {
+			"X-M2M-Origin": "S"+aeName,
+			"X-M2M-RI": "req"+requestNr,
+		}
+	};
+
+	if(cseRelease != "1") {
+		options.headers = Object.assign(options.headers, {"X-M2M-RVI":cseRelease});
+	}
+	
+	requestNr += 1;
+	request(options, function (error, response, body) {
+		console.log("[RESPONSE]");
+		if(error){
+			console.log(error);
+		}else{			
+			console.log(response.statusCode);
+			console.log(body);
+		}
+	});
+}
+
+
+function createContainer(aeName, valuesArray) {
+	let containerName = valuesArray.device_type
 	console.log("\n[REQUEST]");
   
 	var options = {
-	  uri: csePoA + "/" + config.cse.name + "/" + name,
+	  uri: csePoA + "/" + config.cse.name + "/" + aeName,
 	  method: "POST",
 	  headers: {
-		"X-M2M-Origin": "Cae-" + name,
+		"X-M2M-Origin": "Cae-" + aeName,
 		"X-M2M-RI": "req" + requestNr,
 		"Content-Type": "application/vnd.onem2m-res+json;ty=3"
 	  },
@@ -128,19 +239,21 @@ function createContainer(name, values) {
 		console.log("Container Creation error : " + err);
 	  }
 	  else {
-		createContentInstance(name,containerName,values.sensor_value)
+		console.log(`${valuesArray.sensor_value} ${valuesArray.unit}`);
+		createContentInstance(aeName,containerName,(`${valuesArray.sensor_value} ${valuesArray.unit}`))
 	  }
 	});
   }
 
-  function createContentInstance(name, containerName, content) {
+
+  function createContentInstance(aeName, containerName, content) {
 	console.log("\n[REQUEST]");
   
 	var options = {
-	  uri: csePoA + "/" + config.cse.name + "/" + name + "/" + containerName,
+	  uri: csePoA + "/" + config.cse.name + "/" + aeName + "/" + containerName,
 	  method: "POST",
 	  headers: {
-		"X-M2M-Origin": "Cae-" + name,
+		"X-M2M-Origin": "Cae-" + aeName,
 		"X-M2M-RI": "req" + requestNr,
 		"Content-Type": "application/vnd.onem2m-res+json;ty=4"
 	  },
@@ -169,3 +282,46 @@ function createContainer(name, values) {
 	});
   }
   
+  
+  function createSubscription(name){
+	console.log("\n[REQUEST]");
+
+	var options = {
+		uri: cseURL + "/" + config.cse.name + "/" + name + "/COMMAND",
+		method: "POST",
+		headers: {
+			"X-M2M-Origin": "S"+name,
+			"X-M2M-RI": "req"+requestNr,
+			"Content-Type": "application/json;ty=23"
+		},
+		json: {
+			"m2m:sub": {
+				"rn": "subscription",
+				"nu": ["http://"+config.app.ip+":"+config.app.port+"/"+"S"+name+"?ct=json"],
+				"nct": 2,
+				"enc": {
+					"net": [3]
+				}
+			}
+		}
+	};
+
+	console.log("");
+	console.log(options.method + " " + options.uri);
+	console.log(options.json);
+
+	if(cseRelease != "1") {
+		options.headers = Object.assign(options.headers, {"X-M2M-RVI":cseRelease});
+	}
+	
+	requestNr += 1;
+	request(options, function (error, response, body) {
+		console.log("[RESPONSE]");
+		if(error){
+			console.log(error);
+		}else{
+			console.log(response.statusCode);
+			console.log(body);
+		}
+	});
+}
